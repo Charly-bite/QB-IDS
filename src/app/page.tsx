@@ -10,6 +10,8 @@ import TabNav from '@/components/TabNav';
 import AlarmBanner, { useAlarmSound, sendNotification } from '@/components/AlarmBanner';
 import LibreNMSCard from '@/components/LibreNMSCard';
 import DeviceMetricsPanel from '@/components/DeviceMetricsPanel';
+import InventoryCard from '@/components/InventoryCard';
+import NetworkAlerts from '@/components/NetworkAlerts';
 
 const TABS = [
   {
@@ -65,6 +67,17 @@ const TABS = [
       </svg>
     ),
   },
+  {
+    id: 'inventory',
+    label: 'Inventory',
+    icon: (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+        <line x1="12" y1="22.08" x2="12" y2="12" />
+      </svg>
+    ),
+  },
 ];
 
 // Developments organized by environment
@@ -102,13 +115,48 @@ const networkDevices = [
 
 // Static infrastructure nodes (always on the map)
 const INFRA_NODES = [
-  { id: 'internet', label: 'Internet', ip: '0.0.0.0', type: 'internet' as const, x: 400, y: 30 },
-  { id: 'switch-main', label: 'Switch Principal', ip: '192.168.2.1', type: 'switch' as const, x: 400, y: 150 },
+  { id: 'internet', label: 'Internet', ip: '0.0.0.0', type: 'internet' as const, x: 400, y: 60 },
+  { id: 'switch-main', label: 'Switch Principal', ip: '192.168.2.1', type: 'switch' as const, x: 400, y: 250 },
 ];
 
 const INFRA_LINKS = [
   { from: 'internet', to: 'switch-main', label: 'WAN' },
 ];
+
+const HUBS = [
+  { id: 'hub-servers', label: '🖥️ Servidores y BD', ip: '0.0.0.1', type: 'switch' as const },
+  { id: 'hub-networking', label: '🌐 Redes y APs', ip: '0.0.0.2', type: 'switch' as const },
+  { id: 'hub-voip', label: '📞 Telefonía IP', ip: '0.0.0.3', type: 'switch' as const },
+  { id: 'hub-surveillance', label: '📹 Videovigilancia', ip: '0.0.0.4', type: 'switch' as const },
+  { id: 'hub-printers', label: '🖨️ Impresoras', ip: '0.0.0.5', type: 'switch' as const },
+  { id: 'hub-workstations', label: '💻 Estaciones', ip: '0.0.0.6', type: 'switch' as const },
+  { id: 'hub-other', label: '⚙️ Otros Dispositivos', ip: '0.0.0.7', type: 'switch' as const },
+];
+
+const getDeviceHubId = (deviceType: string, vendor: string | null): string => {
+  const typeLower = (deviceType || '').toLowerCase();
+  const vendorLower = (vendor || '').toLowerCase();
+  
+  if (['server', 'database', 'nas', 'ups'].includes(typeLower)) {
+    return 'hub-servers';
+  }
+  if (['switch', 'router', 'firewall', 'access-point'].includes(typeLower)) {
+    return 'hub-networking';
+  }
+  if (['voip-phone', 'phone'].includes(typeLower) || vendorLower.includes('grandstream') || vendorLower.includes('yealink')) {
+    return 'hub-voip';
+  }
+  if (['camera', 'cctv'].includes(typeLower) || vendorLower.includes('hikvision') || vendorLower.includes('dahua')) {
+    return 'hub-surveillance';
+  }
+  if (['printer'].includes(typeLower) || vendorLower.includes('hp') || vendorLower.includes('brother') || vendorLower.includes('epson') || vendorLower.includes('canon')) {
+    return 'hub-printers';
+  }
+  if (['workstation', 'laptop'].includes(typeLower)) {
+    return 'hub-workstations';
+  }
+  return 'hub-other';
+};
 
 // DB device record shape
 interface DbDevice {
@@ -140,7 +188,19 @@ interface ServerStatus {
 }
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState('production');
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('qb-panel-active-tab');
+      if (saved && TABS.some(t => t.id === saved)) return saved;
+    }
+    return 'production';
+  });
+
+  // Persist tab selection to localStorage
+  const handleTabChange = useCallback((tabId: string) => {
+    setActiveTab(tabId);
+    try { localStorage.setItem('qb-panel-active-tab', tabId); } catch { /* ignore */ }
+  }, []);
   const [serverStatuses, setServerStatuses] = useState<Record<string, ServerStatus>>({});
   const [dismissed, setDismissed] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -161,8 +221,58 @@ export default function Dashboard() {
   const prevAlertsRef = useRef<string[]>([]);
   const { startAlarm, stopAlarm, setMuted } = useAlarmSound();
 
+  // Network alert count (from NetworkAlerts component)
+  const [networkAlertCount, setNetworkAlertCount] = useState(0);
+
   // LibreNMS cross-reference: IP → device_id map
   const [librenmsDeviceMap, setLibrenmsDeviceMap] = useState<Map<string, { device_id: number; sysName: string; os: string; uptime: number }>>(new Map());
+
+  // NetBox cross-reference: IP → device_id map
+  const [netboxDeviceMap, setNetboxDeviceMap] = useState<Map<string, number>>(new Map());
+  const [netboxSyncLoading, setNetboxSyncLoading] = useState<Record<string, boolean>>({});
+
+  const fetchNetboxDevices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/netbox?action=devices');
+      if (!res.ok) return;
+      const data = await res.json();
+      const devices = data?.devices || [];
+      const map = new Map<string, number>();
+      devices.forEach((d: any) => {
+        const ip = d.primary_ip4?.address || d.primary_ip?.address;
+        if (ip) {
+          map.set(ip.split('/')[0], d.id);
+        }
+      });
+      setNetboxDeviceMap(map);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleSyncToNetbox = async (dev: DbDevice) => {
+    setNetboxSyncLoading(prev => ({ ...prev, [dev.ip]: true }));
+    try {
+      const res = await fetch('/api/netbox?action=sync-device', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ip: dev.ip,
+          name: dev.name,
+          deviceType: dev.device_type,
+          vendor: dev.vendor
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchNetboxDevices();
+      } else {
+        alert(`Failed to sync to NetBox: ${data.error || 'Unknown error'}`);
+      }
+    } catch (e) {
+      alert(`Failed to sync to NetBox: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setNetboxSyncLoading(prev => ({ ...prev, [dev.ip]: false }));
+    }
+  };
 
   // Fetch LibreNMS devices for cross-referencing (once on mount)
   useEffect(() => {
@@ -181,10 +291,29 @@ export default function Dashboard() {
       } catch { /* ignore */ }
     }
     fetchLibrenmsDevices();
-  }, []);
+    fetchNetboxDevices();
+  }, [fetchNetboxDevices]);
 
   // LibreNMS alerts — fetched periodically for the unified alarm system
   const [librenmsAlerts, setLibrenmsAlerts] = useState<{ id: number; hostname: string; rule: string; severity: string; timestamp: string }[]>([]);
+  const rawLibrenmsAlertsRef = useRef<{ id: number; hostname: string; rule: string; severity: string; timestamp: string }[]>([]);
+
+  const filterAndSetLibrenmsAlerts = useCallback((alerts: typeof librenmsAlerts) => {
+    let silencedRules: string[] = [];
+    let silencedHosts: string[] = [];
+    try {
+      silencedRules = JSON.parse(localStorage.getItem('librenms-silenced-rules') || '[]');
+      silencedHosts = JSON.parse(localStorage.getItem('librenms-silenced-hosts') || '[]');
+    } catch { /* ignore */ }
+
+    const filtered = alerts.filter(alert => {
+      const isRuleSilenced = silencedRules.includes(alert.rule);
+      const isHostSilenced = silencedHosts.some(h => alert.hostname.toLowerCase().includes(h.toLowerCase()));
+      return !isRuleSilenced && !isHostSilenced;
+    });
+
+    setLibrenmsAlerts(filtered);
+  }, []);
 
   useEffect(() => {
     async function fetchLibrenmsAlerts() {
@@ -192,13 +321,26 @@ export default function Dashboard() {
         const res = await fetch('/api/librenms?action=alerts');
         if (!res.ok) return;
         const data = await res.json();
-        setLibrenmsAlerts(data?.alerts || []);
+        const alerts = data?.alerts || [];
+        rawLibrenmsAlertsRef.current = alerts;
+        filterAndSetLibrenmsAlerts(alerts);
       } catch { /* ignore */ }
     }
+
     fetchLibrenmsAlerts();
+
+    const handleSilencingChange = () => {
+      filterAndSetLibrenmsAlerts(rawLibrenmsAlertsRef.current);
+    };
+
+    window.addEventListener('librenms-silencing-changed', handleSilencingChange);
     const interval = setInterval(fetchLibrenmsAlerts, 60000);
-    return () => clearInterval(interval);
-  }, []);
+
+    return () => {
+      window.removeEventListener('librenms-silencing-changed', handleSilencingChange);
+      clearInterval(interval);
+    };
+  }, [filterAndSetLibrenmsAlerts]);
 
   const currentDevs = environments[activeTab] || [];
 
@@ -229,12 +371,16 @@ export default function Dashboard() {
   useEffect(() => {
     if (activeTab === 'network') {
       loadDevicesFromDB();
+      fetchNetboxDevices();
     }
-  }, [activeTab, loadDevicesFromDB]);
+  }, [activeTab, loadDevicesFromDB, fetchNetboxDevices]);
 
   // Build topology nodes/links from DB devices + static infra
   const topoNodes = useMemo(() => {
-    const nodes: { id: string; label: string; ip: string; type: 'server' | 'switch' | 'firewall' | 'router' | 'internet' | 'database' | 'other'; x?: number; y?: number; isMonitored?: boolean }[] = [...INFRA_NODES];
+    const nodes: { id: string; label: string; ip: string; type: 'server' | 'switch' | 'firewall' | 'router' | 'internet' | 'database' | 'other' | 'printer' | 'camera' | 'phone' | 'voip-phone' | 'nas' | 'access-point' | 'ups' | 'iot'; x?: number; y?: number; isMonitored?: boolean }[] = [
+      ...INFRA_NODES,
+      ...HUBS,
+    ];
     dbDevices.forEach(d => {
       // Skip if it's already an infra node
       if (INFRA_NODES.some(n => n.ip === d.ip)) return;
@@ -242,7 +388,7 @@ export default function Dashboard() {
         id: `dev-${d.ip.replace(/\./g, '-')}`,
         label: d.name,
         ip: d.ip,
-        type: d.device_type as 'server' | 'switch' | 'firewall' | 'router' | 'internet' | 'database' | 'other',
+        type: d.device_type as any,
         isMonitored: d.is_monitored,
       });
     });
@@ -251,10 +397,20 @@ export default function Dashboard() {
 
   const topoLinks = useMemo(() => {
     const lnks: { from: string; to: string; label?: string }[] = [...INFRA_LINKS];
-    dbDevices.forEach(d => {
-      if (INFRA_NODES.some(n => n.ip === d.ip)) return;
+    
+    // Connect hubs to Switch Principal
+    HUBS.forEach(hub => {
       lnks.push({
         from: 'switch-main',
+        to: hub.id,
+      });
+    });
+
+    dbDevices.forEach(d => {
+      if (INFRA_NODES.some(n => n.ip === d.ip)) return;
+      const hubId = getDeviceHubId(d.device_type, d.vendor);
+      lnks.push({
+        from: hubId,
         to: `dev-${d.ip.replace(/\./g, '-')}`,
       });
     });
@@ -426,7 +582,7 @@ export default function Dashboard() {
     <main className="dashboard-main">
       <div className="dashboard-container">
         {/* Alarm Banner */}
-        {!dismissed && <AlarmBanner alerts={alerts} librenmsAlerts={librenmsAlerts} onDismiss={handleDismiss} onMute={handleMute} isMuted={isMuted} />}
+        {!dismissed && <AlarmBanner alerts={alerts} librenmsAlerts={librenmsAlerts} networkAlertCount={networkAlertCount} onDismiss={handleDismiss} onMute={handleMute} isMuted={isMuted} />}
 
         <header className="dashboard-header">
           <div className="header-content">
@@ -469,7 +625,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <TabNav tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+        <TabNav tabs={TABS} activeTab={activeTab} onTabChange={handleTabChange} />
 
         <section className="tab-content" role="tabpanel">
           <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
@@ -533,10 +689,21 @@ export default function Dashboard() {
               <TopologyMap
                 nodes={topoNodes}
                 links={topoLinks}
-                statuses={Object.fromEntries(
-                  Object.entries(serverStatuses).map(([key, val]) => [key, val.status])
-                )}
+                statuses={{
+                  ...Object.fromEntries(
+                    dbDevices.map(d => [d.ip, d.status])
+                  ),
+                  ...Object.fromEntries(
+                    Object.entries(serverStatuses).map(([key, val]) => [key, val.status])
+                  )
+                }}
                 deviceInfo={deviceInfoMap}
+              />
+
+              {/* Network Alerts Feed */}
+              <NetworkAlerts
+                compact={compact}
+                onAlertCountChange={setNetworkAlertCount}
               />
 
               {/* Monitored Servers — live polling cards */}
@@ -565,12 +732,13 @@ export default function Dashboard() {
                     All Network Devices <span className="section-count">{dbDevices.length}</span>
                   </h3>
                   <div className="discovered-table">
-                    <div className="discovered-header" style={{ gridTemplateColumns: '40px 1fr 140px 100px 100px 80px' }}>
+                    <div className="discovered-header" style={{ gridTemplateColumns: '40px 1.5fr 1.2fr 1fr 1fr 140px 80px' }}>
                       <span></span>
                       <span>Name</span>
                       <span>IP Address</span>
                       <span>Vendor</span>
                       <span>Type</span>
+                      <span>NetBox</span>
                       <span>Latency</span>
                     </div>
                     {dbDevices.map((dev, idx) => (
@@ -578,7 +746,7 @@ export default function Dashboard() {
                         key={dev.ip}
                         className="discovered-row"
                         style={{
-                          gridTemplateColumns: '40px 1fr 140px 100px 100px 80px',
+                          gridTemplateColumns: '40px 1.5fr 1.2fr 1fr 1fr 140px 80px',
                           background: idx % 2 === 0 ? 'rgba(30, 41, 59, 0.5)' : 'rgba(51, 65, 85, 0.25)',
                           cursor: 'pointer',
                           borderLeft: selectedDevice?.ip === dev.ip ? '3px solid #3b82f6' : '3px solid transparent',
@@ -597,6 +765,53 @@ export default function Dashboard() {
                         <span className="discovered-ip">{dev.ip}</span>
                         <span style={{ color: '#8b5cf6', fontSize: '11px' }}>{dev.vendor || '—'}</span>
                         <span style={{ color: '#94a3b8', fontSize: '11px', textTransform: 'capitalize' }}>{dev.device_type}</span>
+                        {/* NetBox Column */}
+                        <span style={{ display: 'flex', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                          {netboxDeviceMap.has(dev.ip) ? (
+                            <a
+                              href={`http://192.168.2.134:8085/dcim/devices/${netboxDeviceMap.get(dev.ip)}/`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                background: 'rgba(34,197,94,0.15)',
+                                border: '1px solid rgba(34,197,94,0.3)',
+                                borderRadius: '4px',
+                                color: '#4ade80',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textDecoration: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              🔗 Linked
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => handleSyncToNetbox(dev)}
+                              disabled={netboxSyncLoading[dev.ip]}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                background: netboxSyncLoading[dev.ip] ? 'rgba(51,65,85,0.4)' : 'rgba(59,130,246,0.15)',
+                                border: `1px solid ${netboxSyncLoading[dev.ip] ? '#475569' : 'rgba(59,130,246,0.3)'}`,
+                                borderRadius: '4px',
+                                color: netboxSyncLoading[dev.ip] ? '#94a3b8' : '#60a5fa',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: netboxSyncLoading[dev.ip] ? 'wait' : 'pointer',
+                                transition: 'all 0.15s',
+                              }}
+                            >
+                              {netboxSyncLoading[dev.ip] ? '⏳...' : '➕ Sync'}
+                            </button>
+                          )}
+                        </span>
                         <span style={{ color: dev.latency > 10 ? '#f59e0b' : '#64748b', fontSize: '12px', fontFamily: 'monospace' }}>
                           {dev.status === 'Online' ? `${dev.latency}ms` : '—'}
                         </span>
@@ -723,6 +938,48 @@ export default function Dashboard() {
                         {wmiLoading ? '⏳ Inspecting...' : '🔬 Deep Inspect'}
                       </button>
                     )}
+                    {/* NetBox Sync / Link */}
+                    {netboxDeviceMap.has(selectedDevice.ip) ? (
+                      <a
+                        href={`http://192.168.2.134:8085/dcim/devices/${netboxDeviceMap.get(selectedDevice.ip)}/`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          padding: '5px 10px',
+                          background: 'rgba(34,197,94,0.15)',
+                          border: '1px solid rgba(34,197,94,0.3)',
+                          borderRadius: '6px',
+                          color: '#4ade80',
+                          fontSize: '11px',
+                          textDecoration: 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        🔗 Open in NetBox
+                      </a>
+                    ) : (
+                      <button
+                        onClick={() => handleSyncToNetbox(selectedDevice)}
+                        disabled={netboxSyncLoading[selectedDevice.ip]}
+                        style={{
+                          padding: '5px 10px',
+                          background: netboxSyncLoading[selectedDevice.ip] ? 'rgba(51,65,85,0.4)' : 'rgba(59,130,246,0.15)',
+                          border: `1px solid ${netboxSyncLoading[selectedDevice.ip] ? '#475569' : 'rgba(59,130,246,0.3)'}`,
+                          borderRadius: '6px',
+                          color: netboxSyncLoading[selectedDevice.ip] ? '#94a3b8' : '#60a5fa',
+                          fontSize: '11px',
+                          cursor: netboxSyncLoading[selectedDevice.ip] ? 'wait' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        {netboxSyncLoading[selectedDevice.ip] ? '⏳ Syncing...' : '➕ Sync to NetBox'}
+                      </button>
+                    )}
                     {/* Export CSV */}
                     <button onClick={() => window.open('/api/network/export?format=csv', '_blank')}
                       style={{ padding: '5px 10px', background: 'rgba(51,65,85,0.4)', border: '1px solid #475569', borderRadius: '6px', color: '#94a3b8', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', marginLeft: 'auto' }}>
@@ -738,6 +995,7 @@ export default function Dashboard() {
                       { label: 'Latency', value: selectedDevice.status === 'Online' ? `${selectedDevice.latency}ms` : '—' },
                       { label: 'Type', value: selectedDevice.device_type },
                       { label: 'Vendor', value: selectedDevice.vendor || '—' },
+                      { label: 'NetBox Status', value: netboxDeviceMap.has(selectedDevice.ip) ? `Synced (ID: ${netboxDeviceMap.get(selectedDevice.ip)})` : 'Not Synced' },
                       { label: 'MAC Address', value: selectedDevice.mac_address || '—', mono: true },
                       { label: 'Hostname (DNS)', value: selectedDevice.hostname || '—' },
                       { label: 'NetBIOS Name', value: selectedDevice.netbios_name || '—' },
@@ -953,6 +1211,10 @@ export default function Dashboard() {
 
           {activeTab === 'librenms' && (
             <LibreNMSCard compact={compact} />
+          )}
+
+          {activeTab === 'inventory' && (
+            <InventoryCard compact={compact} />
           )}
         </section>
       </div>

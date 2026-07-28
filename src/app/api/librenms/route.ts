@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
+
+// Force Next.js to treat this route as dynamic — never cache responses
+export const dynamic = 'force-dynamic';
 import {
   getDevices,
   getAlerts,
   getDevice,
+  deleteDevice,
   getDevicePorts,
   getDeviceAvailability,
   getDeviceHealth,
@@ -285,6 +289,40 @@ export async function GET(request: Request) {
     console.error('[LibreNMS API] Error:', err);
     return NextResponse.json(
       { error: 'Internal server error', detail: String(err) },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/librenms?id=<device_id>
+ *
+ * Remove a device from LibreNMS.
+ */
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const deviceId = searchParams.get('id');
+
+  if (!deviceId || isNaN(Number(deviceId))) {
+    return NextResponse.json(
+      { error: 'Missing or invalid device ID' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const result = await deleteDevice(Number(deviceId));
+    if (result.error) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ success: true, data: result.data });
+  } catch (err) {
+    console.error('[LibreNMS API] DELETE error:', err);
+    return NextResponse.json(
+      { error: 'Failed to delete device', detail: String(err) },
       { status: 500 }
     );
   }

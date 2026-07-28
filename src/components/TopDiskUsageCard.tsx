@@ -25,17 +25,17 @@ function formatBytes(bytes: number): string {
 }
 
 function getUsageColor(percent: number): string {
-  if (percent >= 95) return '#ef4444';
-  if (percent >= 90) return '#f97316';
-  if (percent >= 80) return '#f59e0b';
-  if (percent >= 60) return '#eab308';
-  return '#22c55e';
+  if (percent >= 95) return '#dc2626';
+  if (percent >= 90) return '#ea580c';
+  if (percent >= 80) return '#d97706';
+  if (percent >= 60) return '#ca8a04';
+  return '#16a34a';
 }
 
 function getUsageGradient(percent: number): string {
-  if (percent >= 90) return 'linear-gradient(90deg, #f97316, #ef4444)';
-  if (percent >= 75) return 'linear-gradient(90deg, #eab308, #f59e0b)';
-  return 'linear-gradient(90deg, #22c55e, #4ade80)';
+  if (percent >= 90) return 'linear-gradient(90deg, #ea580c, #dc2626)';
+  if (percent >= 75) return 'linear-gradient(90deg, #ca8a04, #d97706)';
+  return 'linear-gradient(90deg, #16a34a, #22c55e)';
 }
 
 function getOsEmoji(os: string): string {
@@ -85,15 +85,15 @@ export default function TopDiskUsageCard({
     return (
       <div style={{
         padding: '24px',
-        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6))',
-        border: '1px solid rgba(51, 65, 85, 0.5)',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
         borderRadius: '14px',
         position: 'relative',
         overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #f59e0b, #ef4444, #8b5cf6)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px' }}>
-          <div style={{ width: 16, height: 16, border: '2px solid #f59e0b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #16a34a, #d97706, #ea580c, #dc2626)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#475569', fontSize: '14px' }}>
+          <div style={{ width: 16, height: 16, border: '2px solid #d97706', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
           Fetching disk usage across all devices...
         </div>
       </div>
@@ -103,12 +103,12 @@ export default function TopDiskUsageCard({
   if (error && partitions.length === 0) {
     return (
       <div style={{
-        padding: '16px',
-        background: 'rgba(239, 68, 68, 0.06)',
-        border: '1px solid rgba(239, 68, 68, 0.2)',
+        padding: '18px',
+        background: '#fef2f2',
+        border: '1px solid #fecaca',
         borderRadius: '12px',
-        fontSize: '12px',
-        color: '#f87171',
+        fontSize: '14px',
+        color: '#dc2626',
       }}>
         ⚠️ Could not load disk usage: {error}
       </div>
@@ -118,15 +118,15 @@ export default function TopDiskUsageCard({
   if (partitions.length === 0) {
     return (
       <div style={{
-        padding: '24px',
-        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.6))',
-        border: '1px solid rgba(51, 65, 85, 0.5)',
+        padding: '28px',
+        background: '#f8fafc',
+        border: '1px solid #e2e8f0',
         borderRadius: '14px',
         textAlign: 'center',
         color: '#475569',
-        fontSize: '13px',
+        fontSize: '15px',
       }}>
-        <div style={{ fontSize: '28px', marginBottom: '8px' }}>💾</div>
+        <div style={{ fontSize: '32px', marginBottom: '10px' }}>💾</div>
         No storage data available. Devices may not have SNMP storage monitoring configured.
       </div>
     );
@@ -134,12 +134,13 @@ export default function TopDiskUsageCard({
 
   return (
     <div style={{
-      background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.65))',
-      border: '1px solid rgba(245, 158, 11, 0.2)',
+      background: '#fff',
+      border: '1px solid #e2e8f0',
       borderRadius: '14px',
       padding: compact ? '14px' : '20px',
       position: 'relative',
       overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
     }}>
       {/* Top accent bar */}
       <div style={{
@@ -147,8 +148,8 @@ export default function TopDiskUsageCard({
         top: 0,
         left: 0,
         right: 0,
-        height: '2px',
-        background: 'linear-gradient(90deg, #22c55e, #eab308, #f59e0b, #ef4444)',
+        height: '3px',
+        background: 'linear-gradient(90deg, #16a34a, #ca8a04, #d97706, #dc2626)',
       }} />
 
       {/* Header */}
@@ -158,25 +159,25 @@ export default function TopDiskUsageCard({
         alignItems: 'center',
         marginBottom: compact ? '12px' : '16px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <span style={{
-            fontSize: '11px',
-            color: '#f59e0b',
+            fontSize: '14px',
+            color: '#92400e',
             textTransform: 'uppercase',
-            letterSpacing: '0.08em',
+            letterSpacing: '0.06em',
             fontWeight: 700,
           }}>
             💾 Top — Uso de Disco Duro
           </span>
           {criticalCount > 0 && (
             <span style={{
-              padding: '2px 8px',
-              background: 'rgba(239, 68, 68, 0.15)',
-              border: '1px solid rgba(239, 68, 68, 0.3)',
+              padding: '3px 10px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
               borderRadius: '10px',
-              fontSize: '10px',
-              color: '#f87171',
-              fontWeight: 600,
+              fontSize: '12px',
+              color: '#dc2626',
+              fontWeight: 700,
               animation: 'pulse 2s infinite',
             }}>
               🔴 {criticalCount} crítico{criticalCount > 1 ? 's' : ''}
@@ -184,12 +185,12 @@ export default function TopDiskUsageCard({
           )}
           {warningCount > 0 && (
             <span style={{
-              padding: '2px 8px',
-              background: 'rgba(245, 158, 11, 0.12)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
+              padding: '3px 10px',
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
               borderRadius: '10px',
-              fontSize: '10px',
-              color: '#fbbf24',
+              fontSize: '12px',
+              color: '#92400e',
               fontWeight: 600,
             }}>
               🟡 {warningCount} advertencia{warningCount > 1 ? 's' : ''}
@@ -201,10 +202,11 @@ export default function TopDiskUsageCard({
           style={{
             background: 'none',
             border: 'none',
-            color: '#64748b',
-            fontSize: '10px',
+            color: '#2563eb',
+            fontSize: '13px',
             cursor: 'pointer',
             padding: '2px 6px',
+            fontWeight: 600,
           }}
         >
           ↻ Refresh
@@ -214,15 +216,17 @@ export default function TopDiskUsageCard({
       {/* Column headers */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 140px 100px 60px',
-        padding: '6px 10px',
-        fontSize: '9px',
-        color: '#64748b',
+        gridTemplateColumns: '1fr 160px 110px 70px',
+        padding: '8px 12px',
+        fontSize: '12px',
+        color: '#475569',
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
-        fontWeight: 600,
-        borderBottom: '1px solid rgba(51, 65, 85, 0.4)',
+        fontWeight: 700,
+        borderBottom: '2px solid #e2e8f0',
         marginBottom: '4px',
+        background: '#f8fafc',
+        borderRadius: '6px 6px 0 0',
       }}>
         <span>Dispositivo / Partición</span>
         <span>Usado / Total</span>
@@ -243,47 +247,48 @@ export default function TopDiskUsageCard({
               key={`${partition.device_id}-${partition.description}-${idx}`}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 140px 100px 60px',
-                padding: '8px 10px',
-                background: idx % 2 === 0 ? 'rgba(30, 41, 59, 0.5)' : 'transparent',
+                gridTemplateColumns: '1fr 160px 110px 70px',
+                padding: '10px 12px',
+                background: idx % 2 === 0 ? '#f8fafc' : '#fff',
                 borderRadius: '6px',
                 alignItems: 'center',
                 transition: 'background 0.15s',
-                borderLeft: isCritical ? '3px solid #ef4444' : '3px solid transparent',
+                borderLeft: isCritical ? '4px solid #dc2626' : '4px solid transparent',
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(59, 130, 246, 0.06)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = idx % 2 === 0 ? 'rgba(30, 41, 59, 0.5)' : 'transparent'; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#eff6ff'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = idx % 2 === 0 ? '#f8fafc' : '#fff'; }}
             >
               {/* Device + Partition */}
               <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                  <span style={{ fontSize: '12px' }}>{getOsEmoji(partition.os)}</span>
-                  <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                  <span style={{ fontSize: '14px' }}>{getOsEmoji(partition.os)}</span>
+                  <span style={{ fontSize: '14px', color: '#0f172a', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {deviceLabel}
                   </span>
                   <span style={{
-                    padding: '1px 5px',
-                    background: 'rgba(51, 65, 85, 0.4)',
-                    borderRadius: '3px',
-                    fontSize: '9px',
-                    color: '#94a3b8',
+                    padding: '2px 6px',
+                    background: '#e2e8f0',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    color: '#475569',
                     fontFamily: 'monospace',
                     whiteSpace: 'nowrap',
+                    fontWeight: 500,
                   }}>
                     {partition.ip}
                   </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', color: '#475569', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 500 }}>
                     {partition.description}
                   </span>
                   {/* Usage bar inline */}
-                  <div style={{ flex: 1, minWidth: '40px', maxWidth: '120px', height: '4px', background: 'rgba(51, 65, 85, 0.5)', borderRadius: '2px', overflow: 'hidden' }}>
+                  <div style={{ flex: 1, minWidth: '40px', maxWidth: '120px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
                     <div style={{
                       width: `${Math.min(partition.percent, 100)}%`,
                       height: '100%',
                       background: gradient,
-                      borderRadius: '2px',
+                      borderRadius: '3px',
                       transition: 'width 0.6s ease',
                       boxShadow: isCritical ? `0 0 8px ${usageColor}60` : undefined,
                     }} />
@@ -292,20 +297,20 @@ export default function TopDiskUsageCard({
               </div>
 
               {/* Used / Total */}
-              <span style={{ fontSize: '11px', color: '#cbd5e1', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: '13px', color: '#1e293b', fontFamily: 'monospace', fontWeight: 500 }}>
                 {formatBytes(partition.usedBytes)} / {formatBytes(partition.sizeBytes)}
               </span>
 
               {/* Free */}
-              <span style={{ fontSize: '11px', color: partition.freeBytes < 5 * 1024 * 1024 * 1024 ? '#f87171' : '#94a3b8', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: '13px', color: partition.freeBytes < 5 * 1024 * 1024 * 1024 ? '#dc2626' : '#475569', fontFamily: 'monospace', fontWeight: 500 }}>
                 {formatBytes(partition.freeBytes)}
               </span>
 
               {/* Usage % */}
               <span style={{
                 textAlign: 'right',
-                fontSize: '13px',
-                fontWeight: 700,
+                fontSize: '15px',
+                fontWeight: 800,
                 color: usageColor,
                 fontFamily: 'monospace',
               }}>
@@ -318,18 +323,19 @@ export default function TopDiskUsageCard({
 
       {/* Show all / collapse */}
       {partitions.length > (compact ? 5 : 10) && (
-        <div style={{ textAlign: 'center', marginTop: '10px' }}>
+        <div style={{ textAlign: 'center', marginTop: '12px' }}>
           <button
             onClick={() => setShowAll(!showAll)}
             style={{
-              background: 'rgba(51, 65, 85, 0.3)',
-              border: '1px solid rgba(51, 65, 85, 0.5)',
-              borderRadius: '6px',
-              color: '#94a3b8',
-              fontSize: '11px',
-              padding: '4px 14px',
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              color: '#334155',
+              fontSize: '13px',
+              padding: '6px 18px',
               cursor: 'pointer',
               transition: 'all 0.15s',
+              fontWeight: 600,
             }}
           >
             {showAll ? '▲ Mostrar menos' : `▼ Ver todo (${partitions.length} particiones)`}
@@ -342,27 +348,29 @@ export default function TopDiskUsageCard({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginTop: '12px',
-        padding: '8px 10px',
-        background: 'rgba(30, 41, 59, 0.5)',
+        marginTop: '14px',
+        padding: '10px 12px',
+        background: '#f8fafc',
         borderRadius: '8px',
-        fontSize: '10px',
-        color: '#64748b',
+        border: '1px solid #e2e8f0',
+        fontSize: '13px',
+        color: '#475569',
+        fontWeight: 500,
       }}>
         <span>
           {partitions.length} particiones • Auto-refresh 2min
         </span>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+        <div style={{ display: 'flex', gap: '14px' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
             &lt;75%
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#d97706', display: 'inline-block' }} />
             75-89%
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#dc2626', display: 'inline-block' }} />
             ≥90%
           </span>
         </div>
@@ -371,13 +379,14 @@ export default function TopDiskUsageCard({
       {/* Partial error warning */}
       {error && (
         <div style={{
-          marginTop: '8px',
-          padding: '4px 10px',
-          background: 'rgba(245, 158, 11, 0.06)',
-          border: '1px solid rgba(245, 158, 11, 0.15)',
-          borderRadius: '6px',
-          fontSize: '10px',
-          color: '#fbbf24',
+          marginTop: '10px',
+          padding: '6px 12px',
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '8px',
+          fontSize: '13px',
+          color: '#92400e',
+          fontWeight: 500,
         }}>
           ⚠️ Datos parciales — {error}
         </div>

@@ -1,0 +1,100 @@
+# Phase 1 — NetBox + Nmap API
+# Deploy on 192.168.2.134 alongside LibreNMS
+#
+# Usage:
+#   docker compose -f docker-compose.phase1.yml up -d
+#
+# First-time setup:
+#   docker compose -f docker-compose.phase1.yml exec netbox /opt/netbox/netbox/manage.py createsuperuser
+
+services:
+  # ─── NetBox: Network Inventory & IPAM ───────────────────────
+  netbox:
+    image: netboxcommunity/netbox:latest
+    container_name: netbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8085:8080"
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_NAME: netbox
+      DB_USER: netbox
+      DB_PASSWORD: netbox_db_pass_2026
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Security — CHANGE THIS in production
+      SECRET_KEY: "qb-panel-control-netbox-secret-key-2026-quimicaboss-secure!"
+      # Superuser (created on first run)
+      SUPERUSER_NAME: admin
+      SUPERUSER_EMAIL: admin@quimicaboss.com
+      SUPERUSER_PASSWORD: QBNetbox2026!
+      # API
+      ALLOWED_HOSTS: "*"
+      CORS_ORIGIN_ALLOW_ALL: "True"
+    volumes:
+      - netbox-media:/opt/netbox/netbox/media
+      - netbox-reports:/opt/netbox/netbox/reports
+      - netbox-scripts:/opt/netbox/netbox/scripts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # NetBox dependencies
+  postgres:
+    image: postgres:16-alpine
+    container_name: nb-postgres
+    environment:
+      POSTGRES_DB: netbox
+      POSTGRES_USER: netbox
+      POSTGRES_PASSWORD: netbox_db_pass_2026
+    volumes:
+      - netbox-postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nb-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Nmap API: Deep Network Scanner ─────────────────────────
+  nmap-api:
+    build:
+      context: ./docker/nmap-api
+      dockerfile: Dockerfile
+    container_name: nmap-api
+    ports:
+      - "5001:5001"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  netbox-postgres-data:
+  netbox-media:
+  netbox-reports:
+  netbox-scripts:

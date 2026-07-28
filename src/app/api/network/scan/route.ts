@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { upsertDevice, recordScan, initDatabase } from '@/lib/db';
+import { upsertDevice, recordScan, initDatabase, createAlert } from '@/lib/db';
+import { diffScanResults, generateAlerts, type ScanHost } from '@/lib/network-diff';
 import { lookupVendor } from '@/lib/oui-lookup';
 import { scanHosts } from '@/lib/port-scan';
 import { classifyDevice } from '@/lib/device-classifier';
@@ -430,6 +431,45 @@ export async function POST(request: Request) {
 
     // Record scan
     await recordScan(subnet, onlineHosts.length);
+
+    // ═══════════════════════════════════════════
+    // PHASE 13: Diff & Alert — Detect new/changed devices
+    // ═══════════════════════════════════════════
+    setScanProgress({ phase: 'Alerting', percent: 99, detail: 'Checking for new devices...', running: true });
+    console.log(`[Scan] Phase 13: Running diff for alerts...`);
+
+    let alertsGenerated = 0;
+    try {
+      const scanHosts: ScanHost[] = onlineHosts.map(h => ({
+        ip: h.ip,
+        status: h.status,
+        latency: h.latency,
+        hostname: h.hostname,
+        ttl: h.ttl,
+        mac: arpTable[h.ip] || null,
+        vendor: vendorMap[h.ip] || null,
+        openPorts: portResults[h.ip]?.openPorts || [],
+        osFingerprint: classifications[h.ip]?.osFingerprint || null,
+        deviceType: classifications[h.ip]?.deviceType || null,
+      }));
+
+      const diff = await diffScanResults(scanHosts);
+      const alerts = generateAlerts(diff);
+
+      for (const alert of alerts) {
+        const id = await createAlert(alert);
+        if (id !== null) alertsGenerated++;
+      }
+
+      if (alertsGenerated > 0) {
+        console.log(`[Scan] Phase 13: Generated ${alertsGenerated} alerts (${diff.newDevices.length} new, ${diff.changedDevices.length} changed, ${diff.goneDevices.length} gone)`);
+      } else {
+        console.log(`[Scan] Phase 13: No new alerts`);
+      }
+    } catch (diffErr) {
+      console.error('[Scan] Phase 13 (diff) failed:', diffErr);
+      // Non-fatal — scan still succeeds even if alerting fails
+    }
 
     setScanProgress({ phase: 'Complete', percent: 100, detail: 'Scan finished!', running: false });
     console.log(`[Scan] All phases complete!`);

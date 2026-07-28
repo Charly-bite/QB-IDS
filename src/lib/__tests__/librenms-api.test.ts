@@ -25,7 +25,7 @@ describe('librenms-api', () => {
       const { getDevices } = await import('../librenms-api');
       const result = await getDevices();
       expect(result.data).toBeNull();
-      expect(result.error).toBe('LIBRENMS_API_TOKEN not configured');
+      expect(result.error).toContain('LIBRENMS_API_TOKEN not configured');
     });
 
     it('returns data on successful response', async () => {
@@ -69,6 +69,34 @@ describe('librenms-api', () => {
       const result = await getDevices();
       expect(result.data).toBeNull();
       expect(result.error).toContain('HTTP 500');
+    });
+
+    it('returns specific error for 401 Unauthenticated', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => '{"message":"Unauthenticated."}',
+      });
+
+      const { getDevices } = await import('../librenms-api');
+      const result = await getDevices();
+      expect(result.data).toBeNull();
+      expect(result.error).toContain('invalid or expired');
+      expect(result.error).toContain('HTTP 401');
+    });
+
+    it('returns specific error for 403 Forbidden', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: async () => 'Forbidden',
+      });
+
+      const { getDevices } = await import('../librenms-api');
+      const result = await getDevices();
+      expect(result.data).toBeNull();
+      expect(result.error).toContain('lacks permission');
+      expect(result.error).toContain('HTTP 403');
     });
 
     it('handles text read failure on error response', async () => {
@@ -281,7 +309,7 @@ describe('librenms-api', () => {
       const { getDeviceGraphImage } = await import('../librenms-api');
       const result = await getDeviceGraphImage(1, 'device_processor');
       expect(result.data).toBeNull();
-      expect(result.error).toBe('LIBRENMS_API_TOKEN not configured');
+      expect(result.error).toContain('LIBRENMS_API_TOKEN not configured');
     });
 
     it('returns error on HTTP failure', async () => {

@@ -9,8 +9,13 @@
  *   LIBRENMS_API_TOKEN — API token from LibreNMS UI
  */
 
-const API_URL = process.env.LIBRENMS_API_URL || 'http://192.168.2.134:8000/api/v0';
-const API_TOKEN = process.env.LIBRENMS_API_TOKEN || '';
+// Read env vars dynamically to avoid stale values cached at module-load time
+function getApiUrl(): string {
+  return process.env.LIBRENMS_API_URL || 'http://192.168.2.134:8000/api/v0';
+}
+function getApiToken(): string {
+  return process.env.LIBRENMS_API_TOKEN || '';
+}
 
 interface FetchOptions {
   method?: string;
@@ -23,18 +28,20 @@ async function librenmsRequest<T = unknown>(
   options: FetchOptions = {}
 ): Promise<{ data: T | null; error: string | null }> {
   const { method = 'GET', body, timeout = 10000 } = options;
+  const apiUrl = getApiUrl();
+  const apiToken = getApiToken();
 
-  if (!API_TOKEN) {
-    return { data: null, error: 'LIBRENMS_API_TOKEN not configured' };
+  if (!apiToken) {
+    return { data: null, error: 'LIBRENMS_API_TOKEN not configured — add it to .env.local' };
   }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const url = `${API_URL}${endpoint}`;
+    const url = `${apiUrl}${endpoint}`;
     const headers: Record<string, string> = {
-      'X-Auth-Token': API_TOKEN,
+      'X-Auth-Token': apiToken,
       'Accept': 'application/json',
     };
     if (body) headers['Content-Type'] = 'application/json';
@@ -44,10 +51,26 @@ async function librenmsRequest<T = unknown>(
       headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
+      cache: 'no-store' as RequestCache, // Disable Next.js fetch caching — data must be fresh
     });
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
+
+      // Provide a clear, actionable message for auth failures
+      if (res.status === 401) {
+        return {
+          data: null,
+          error: `LibreNMS API token is invalid or expired (HTTP 401). Generate a new token in LibreNMS → Settings → API → API Settings and update LIBRENMS_API_TOKEN in .env.local`,
+        };
+      }
+      if (res.status === 403) {
+        return {
+          data: null,
+          error: `LibreNMS API token lacks permission for ${endpoint} (HTTP 403)`,
+        };
+      }
+
       return { data: null, error: `HTTP ${res.status}: ${text}` };
     }
 
@@ -118,6 +141,11 @@ export async function getDevice(hostnameOrId: string | number) {
   return librenmsRequest<{ devices: LibreNMSDevice[] }>(`/devices/${hostnameOrId}`);
 }
 
+/** Delete a device from LibreNMS by ID */
+export async function deleteDevice(deviceId: number) {
+  return librenmsRequest<{ status: string; message: string }>(`/devices/${deviceId}`, { method: 'DELETE' });
+}
+
 /** Get all active alerts */
 export async function getAlerts() {
   return librenmsRequest<{ alerts: LibreNMSAlert[] }>('/alerts?state=1');
@@ -177,16 +205,22 @@ export async function getDeviceGraphImage(
   width: number = 500,
   height: number = 150
 ): Promise<{ data: Buffer | null; error: string | null; contentType: string }> {
-  if (!API_TOKEN) {
-    return { data: null, error: 'LIBRENMS_API_TOKEN not configured', contentType: '' };
+  const apiToken = getApiToken();
+  const apiUrl = getApiUrl();
+  if (!apiToken) {
+    return { data: null, error: 'LIBRENMS_API_TOKEN not configured — add it to .env.local', contentType: '' };
   }
   try {
-    const url = `${API_URL}/devices/${deviceId}/${type}.png?from=${from}&width=${width}&height=${height}`;
+    const url = `${apiUrl}/devices/${deviceId}/${type}.png?from=${from}&width=${width}&height=${height}`;
     const res = await fetch(url, {
-      headers: { 'X-Auth-Token': API_TOKEN },
+      headers: { 'X-Auth-Token': apiToken },
       signal: AbortSignal.timeout(15000),
+      cache: 'no-store' as RequestCache,
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        return { data: null, error: 'API token invalid/expired (HTTP 401)', contentType: '' };
+      }
       return { data: null, error: `HTTP ${res.status}`, contentType: '' };
     }
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -207,11 +241,6 @@ export async function addDevice(hostname: string, snmpVersion: string = 'v2c', c
     method: 'POST',
     body: { hostname, version: snmpVersion, community },
   });
-}
-
-/** Delete a device from LibreNMS */
-export async function deleteDevice(deviceId: number) {
-  return librenmsRequest(`/devices/${deviceId}`, { method: 'DELETE' });
 }
 
 /** Test API connectivity */
@@ -411,5 +440,5 @@ export async function getAllDevicesStorage(limit: number = 20) {
 
 /** Get base URL and token for graph URL construction */
 export function getGraphConfig() {
-  return { apiUrl: API_URL, token: API_TOKEN };
+  return { apiUrl: getApiUrl(), token: getApiToken() };
 }

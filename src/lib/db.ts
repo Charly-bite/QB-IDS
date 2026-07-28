@@ -1,14 +1,14 @@
 import sql from 'mssql';
 
 const config: sql.config = {
-  server: '192.168.2.187\\SQLEXPRESS',
-  database: 'PanelControl',
+  server: process.env.DB_SERVER || '192.168.2.187\\SQLEXPRESS',
+  database: process.env.DB_NAME || 'PanelControl',
   authentication: {
     type: 'ntlm',
     options: {
-      domain: 'QB_WFS_BD_001',
-      userName: 'Administrador',
-      password: 'Qu1m1c4B055',
+      domain: process.env.DB_DOMAIN || 'QB_WFS_BD_001',
+      userName: process.env.DB_USER || 'Administrador',
+      password: process.env.DB_PASSWORD || 'Qu1m1c4B055',
     },
   },
   options: {
@@ -148,6 +148,26 @@ export async function initDatabase(): Promise<void> {
         ALTER TABLE NetworkDevices ADD librenms_uptime BIGINT NULL;
       IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='NetworkDevices' AND COLUMN_NAME='librenms_last_polled')
         ALTER TABLE NetworkDevices ADD librenms_last_polled DATETIME NULL;
+    `);
+
+    // Migration v6: NetworkAlerts table for automated alerting
+    await p.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='NetworkAlerts' AND xtype='U')
+      BEGIN
+        CREATE TABLE NetworkAlerts (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          alert_type VARCHAR(20) NOT NULL,
+          severity VARCHAR(10) NOT NULL,
+          ip VARCHAR(45) NOT NULL,
+          device_name VARCHAR(100) NULL,
+          message NVARCHAR(500) NOT NULL,
+          details NVARCHAR(MAX) NULL,
+          acknowledged BIT NOT NULL DEFAULT 0,
+          acknowledged_by VARCHAR(50) NULL,
+          acknowledged_at DATETIME NULL,
+          created_at DATETIME NOT NULL DEFAULT GETDATE()
+        );
+      END
     `);
 
     console.log('[DB] PanelControl database initialized successfully');
@@ -322,4 +342,110 @@ export async function seedKnownDevices(devices: { ip: string; name: string; type
           UPDATE NetworkDevices SET name = @name, device_type = @type, is_monitored = 1 WHERE ip = @ip AND name LIKE 'Unknown%'
       `);
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// NetworkAlerts CRUD
+// ═══════════════════════════════════════════════════════════
+
+export interface AlertRecord {
+  alert_type: string;
+  severity: string;
+  ip: string;
+  device_name: string | null;
+  message: string;
+  details: string | null;
+}
+
+// Create a new alert (skips duplicate if same type+ip within last 10 minutes)
+export async function createAlert(alert: AlertRecord): Promise<number | null> {
+  const p = await getPool();
+  
+  // Dedup: skip if same alert_type + ip was created within last 10 minutes
+  const dup = await p.request()
+    .input('alertType', sql.VarChar(20), alert.alert_type)
+    .input('ip', sql.VarChar(45), alert.ip)
+    .query(`
+      SELECT TOP 1 id FROM NetworkAlerts 
+      WHERE alert_type = @alertType AND ip = @ip 
+        AND created_at > DATEADD(MINUTE, -10, GETDATE())
+    `);
+  
+  if (dup.recordset.length > 0) return null; // Skip duplicate
+
+  const result = await p.request()
+    .input('alertType', sql.VarChar(20), alert.alert_type)
+    .input('severity', sql.VarChar(10), alert.severity)
+    .input('ip', sql.VarChar(45), alert.ip)
+    .input('deviceName', sql.VarChar(100), alert.device_name)
+    .input('message', sql.NVarChar(500), alert.message)
+    .input('details', sql.NVarChar(sql.MAX), alert.details)
+    .query(`
+      INSERT INTO NetworkAlerts (alert_type, severity, ip, device_name, message, details)
+      OUTPUT INSERTED.id
+      VALUES (@alertType, @severity, @ip, @deviceName, @message, @details)
+    `);
+  
+  return result.recordset[0]?.id || null;
+}
+
+// Get all unacknowledged alerts (most recent first)
+export async function getActiveAlerts(): Promise<unknown[]> {
+  const p = await getPool();
+  const result = await p.request().query(`
+    SELECT * FROM NetworkAlerts 
+    WHERE acknowledged = 0 
+    ORDER BY 
+      CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+      created_at DESC
+  `);
+  return result.recordset;
+}
+
+// Get alert history (all alerts, acknowledged or not)
+export async function getAlertHistory(limit: number = 100): Promise<unknown[]> {
+  const p = await getPool();
+  const result = await p.request()
+    .input('limit', sql.Int, limit)
+    .query(`
+      SELECT TOP (@limit) * FROM NetworkAlerts 
+      ORDER BY created_at DESC
+    `);
+  return result.recordset;
+}
+
+// Acknowledge a single alert
+export async function acknowledgeAlert(id: number, acknowledgedBy?: string): Promise<boolean> {
+  const p = await getPool();
+  const result = await p.request()
+    .input('id', sql.Int, id)
+    .input('acknowledgedBy', sql.VarChar(50), acknowledgedBy || 'admin')
+    .query(`
+      UPDATE NetworkAlerts 
+      SET acknowledged = 1, acknowledged_by = @acknowledgedBy, acknowledged_at = GETDATE()
+      WHERE id = @id AND acknowledged = 0
+    `);
+  return (result.rowsAffected[0] || 0) > 0;
+}
+
+// Acknowledge all active alerts
+export async function acknowledgeAllAlerts(acknowledgedBy?: string): Promise<number> {
+  const p = await getPool();
+  const result = await p.request()
+    .input('acknowledgedBy', sql.VarChar(50), acknowledgedBy || 'admin')
+    .query(`
+      UPDATE NetworkAlerts 
+      SET acknowledged = 1, acknowledged_by = @acknowledgedBy, acknowledged_at = GETDATE()
+      WHERE acknowledged = 0
+    `);
+  return result.rowsAffected[0] || 0;
+}
+
+// Get count of unacknowledged alerts (for badge)
+export async function getActiveAlertCount(): Promise<number> {
+  const p = await getPool();
+  const result = await p.request().query(`
+    SELECT COUNT(*) as count FROM NetworkAlerts WHERE acknowledged = 0
+  `);
+  return result.recordset[0]?.count || 0;
 }

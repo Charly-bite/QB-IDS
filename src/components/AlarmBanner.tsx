@@ -20,13 +20,14 @@ interface LibreNMSAlertItem {
 interface AlarmBannerProps {
   alerts: ServerAlert[];
   librenmsAlerts?: LibreNMSAlertItem[];
+  networkAlertCount?: number;
   onDismiss: () => void;
   onMute: () => void;
   isMuted: boolean;
 }
 
-export default function AlarmBanner({ alerts, librenmsAlerts = [], onDismiss, onMute, isMuted }: AlarmBannerProps) {
-  const totalAlerts = alerts.length + librenmsAlerts.length;
+export default function AlarmBanner({ alerts, librenmsAlerts = [], networkAlertCount = 0, onDismiss, onMute, isMuted }: AlarmBannerProps) {
+  const totalAlerts = alerts.length + librenmsAlerts.length + networkAlertCount;
   if (totalAlerts === 0) return null;
 
   const criticalLnms = librenmsAlerts.filter(a => a.severity === 'critical');
@@ -64,6 +65,11 @@ export default function AlarmBanner({ alerts, librenmsAlerts = [], onDismiss, on
           {warningLnms.length > 0 && (
             <span style={{ fontSize: '11px', color: '#fbbf24', display: 'block', marginTop: '2px' }}>
               🟡 {warningLnms.length} warning{warningLnms.length > 1 ? 's' : ''}: {warningLnms.map(a => a.hostname).join(', ')}
+            </span>
+          )}
+          {networkAlertCount > 0 && (
+            <span style={{ fontSize: '11px', color: '#4ade80', display: 'block', marginTop: '2px' }}>
+              🆕 {networkAlertCount} new device{networkAlertCount > 1 ? 's' : ''} detected on the network
             </span>
           )}
         </div>

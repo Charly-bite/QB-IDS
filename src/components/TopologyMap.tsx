@@ -6,7 +6,7 @@ interface TopoNode {
   id: string;
   label: string;
   ip: string;
-  type: 'server' | 'switch' | 'firewall' | 'router' | 'internet' | 'database' | 'other';
+  type: 'server' | 'switch' | 'firewall' | 'router' | 'internet' | 'database' | 'other' | 'printer' | 'camera' | 'phone' | 'voip-phone' | 'nas' | 'access-point' | 'ups' | 'iot';
   x?: number;
   y?: number;
   isMonitored?: boolean;
@@ -42,12 +42,39 @@ interface PhysicsNode extends TopoNode {
   isDragging?: boolean;
 }
 
-// Draw functions — smaller radius for "other" type
+const hubColors: Record<string, string> = {
+  'hub-servers': '#10b981',      // Emerald
+  'hub-networking': '#3b82f6',   // Blue
+  'hub-voip': '#06b6d4',         // Cyan
+  'hub-surveillance': '#f43f5e', // Rose
+  'hub-printers': '#a855f7',     // Purple
+  'hub-workstations': '#8b5cf6', // Violet
+  'hub-other': '#64748b',        // Slate
+};
+
+const getCategoryColor = (type: string | undefined | null, id: string | undefined | null): string => {
+  if (id && id.startsWith('hub-')) {
+    return hubColors[id] || '#64748b';
+  }
+  
+  const typeLower = (type || 'other').toLowerCase();
+  if (['server', 'database', 'nas'].includes(typeLower)) return '#10b981'; // Emerald
+  if (['switch', 'router', 'firewall', 'access-point'].includes(typeLower)) return '#3b82f6'; // Blue
+  if (['voip-phone', 'phone'].includes(typeLower)) return '#06b6d4'; // Cyan
+  if (['camera'].includes(typeLower)) return '#f43f5e'; // Rose
+  if (['printer'].includes(typeLower)) return '#a855f7'; // Purple
+  if (['workstation'].includes(typeLower)) return '#8b5cf6'; // Violet
+  return '#64748b'; // Slate
+};
+
+// Draw functions — clean leaf dots and full core icons
 const drawNode = (ctx: CanvasRenderingContext2D, node: PhysicsNode, status: string, isHovered: boolean, scale: number) => {
   const x = node.x;
   const y = node.y;
-  const isOther = node.type === 'other';
-  const color = status === 'online' ? (isOther ? '#4ade80' : '#22c55e')
+  const isLeafDot = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(node.type || 'other') && !(node.id && node.id.startsWith('hub-'));
+  
+  const categoryColor = getCategoryColor(node.type, node.id);
+  const color = status === 'online' ? categoryColor
               : status === 'offline' ? '#ef4444' : '#64748b';
   
   if (isHovered) {
@@ -55,65 +82,88 @@ const drawNode = (ctx: CanvasRenderingContext2D, node: PhysicsNode, status: stri
     ctx.shadowBlur = 12 / scale;
   }
 
-  if (isOther) {
-    // Small dot for unknown devices
-    const r = 6;
+  let r = 6;
+  if (isLeafDot) {
+    // Small dot for leaf devices
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = isHovered ? color : '#1e293b';
     ctx.fill();
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.stroke();
   } else {
-    // Full icon for known devices
-    const typeColors: Record<string, string> = {
-      internet: '#22c55e',
-      firewall: '#f59e0b',
-      switch: '#3b82f6',
-      server: '#22c55e',
-      router: '#8b5cf6',
-      database: '#06b6d4',
-    };
-    const baseColor = status === 'offline' ? '#ef4444' : (typeColors[node.type] || color);
-    const r = node.type === 'internet' ? 20 : node.type === 'switch' ? 18 : 16;
+    // Full icon for known devices & hubs
+    const isHub = node.id && node.id.startsWith('hub-');
+    r = 14;
+    if (node.type === 'internet') r = 20;
+    else if (node.id === 'switch-main') r = 22; // Make core switch stand out
+    else if (isHub) r = 18; // Hubs
+    else if (node.type === 'switch' || node.type === 'firewall' || node.type === 'router') r = 16;
     
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fillStyle = '#1e293b';
     ctx.fill();
-    ctx.strokeStyle = baseColor;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Type indicator
-    ctx.fillStyle = baseColor;
-    ctx.font = `bold ${Math.max(10, 12)}px Inter, Arial, sans-serif`;
+    // Type indicator symbol
+    ctx.fillStyle = color;
+    ctx.font = `bold ${r === 22 ? 14 : r === 18 ? 12 : 10}px Inter, Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    
+    // Core/hub symbols
     const symbols: Record<string, string> = {
-      internet: '🌐', firewall: '🛡', switch: '⬡', server: '▪▪', router: '⇄', database: '⊞',
+      internet: '🌐',
+      firewall: '🛡️',
+      switch: '⬡',
+      server: '🖥️',
+      router: '⇄',
+      database: '🗄️',
+      nas: '💾',
     };
-    ctx.fillText(symbols[node.type] || '?', x, y);
+    
+    let symbol = symbols[node.type || 'other'] || '?';
+    if (isHub && node.id) {
+      const hubSymbols: Record<string, string> = {
+        'hub-servers': '🖥️',
+        'hub-networking': '⬡',
+        'hub-voip': '📞',
+        'hub-surveillance': '📹',
+        'hub-printers': '🖨️',
+        'hub-workstations': '💻',
+        'hub-other': '⚙️',
+      };
+      symbol = hubSymbols[node.id] || '⬡';
+    }
+    
+    ctx.fillText(symbol, x, y);
   }
 
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
 
-  // Labels (only if zoomed in enough or it's a known device)
+  // Labels (only if zoomed in enough or it's a hovered/known device)
   const labelScale = scale;
-  if (!isOther || labelScale > 0.6) {
-    const fontSize = isOther ? 8 : 10;
-    ctx.font = `${fontSize}px Inter, sans-serif`;
-    ctx.fillStyle = isOther ? '#94a3b8' : '#e2e8f0';
+  const shouldShowLabel = !isLeafDot || labelScale > 0.8 || isHovered;
+  if (shouldShowLabel) {
+    const fontSize = isLeafDot ? 8 : 10;
+    ctx.font = `${isHovered ? 'bold ' : ''}${fontSize}px Inter, sans-serif`;
+    ctx.fillStyle = isLeafDot ? '#94a3b8' : '#e2e8f0';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(node.label, x, y + (isOther ? 10 : 22));
+    ctx.fillText(node.label || 'Unknown', x, y + (isLeafDot ? 10 : r + 6));
     
-    if (!isOther) {
+    if (!isLeafDot || isHovered) {
       ctx.font = '8px monospace';
       ctx.fillStyle = '#64748b';
-      ctx.fillText(node.ip, x, y + 34);
+      // Only draw IP for devices that actually have an IP (exclude virtual hubs/internet)
+      if (node.ip && node.ip !== '0.0.0.0' && !node.ip.startsWith('0.0.0.')) {
+        ctx.fillText(node.ip, x, y + (isLeafDot ? 20 : r + 18));
+      }
     }
   }
 };
@@ -175,7 +225,9 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
     setNodeCount(map.size);
   }, [nodes]);
 
-  const getStatus = useCallback((ip: string): string => {
+  const getStatus = useCallback((ip: string, id?: string): string => {
+    if (id?.startsWith('hub-')) return 'online';
+    if (id === 'internet') return 'online';
     const s = statusesRef.current[ip];
     if (!s) return 'loading';
     return s === 'Online' ? 'online' : 'offline';
@@ -241,6 +293,13 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
         const n1 = pNodes[i];
         if (n1.isDragging) continue;
 
+        // Core infrastructure is static
+        if (n1.type === 'internet' || n1.id === 'switch-main') {
+          n1.vx = 0;
+          n1.vy = 0;
+          continue;
+        }
+
         let fx = 0, fy = 0;
 
         // Center gravity (gentle pull to keep grouped)
@@ -257,10 +316,15 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
           const distSq = dx * dx + dy * dy;
           
           // Skip if too far apart (optimization for large graphs)
-          if (distSq > 60000) continue; // skip if > ~245px apart
+          if (distSq > 90000) continue; // skip if > 300px apart
           
           const safeDist = Math.max(distSq, 4); // prevent divide-by-near-zero
-          const minDist = (n1.type === 'other' && n2.type === 'other') ? 600 : 2000;
+          
+          const isLeaf1 = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(n1.type) && !n1.id.startsWith('hub-');
+          const isLeaf2 = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(n2.type) && !n2.id.startsWith('hub-');
+          
+          // Leaves repel each other gently; hubs/switches repel strongly
+          const minDist = (isLeaf1 && isLeaf2) ? 400 : 2500;
           const force = Math.min(minDist / safeDist, 5); // cap max force
           const dist = Math.sqrt(safeDist);
           fx += (dx / dist) * force;
@@ -288,9 +352,13 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
         const dx = n2.x - n1.x;
         const dy = n2.y - n1.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const isOtherLink = n2.type === 'other' || n1.type === 'other';
-        const targetDist = isOtherLink ? 60 : 120;
-        const stiffness = isOtherLink ? 0.01 : 0.03;
+        
+        const isBackboneLink = (n1.id === 'internet' || n1.id === 'switch-main' || (n1.id && n1.id.startsWith('hub-'))) && 
+                              (n2.id === 'switch-main' || (n2.id && n2.id.startsWith('hub-')));
+        
+        // Backbone links are longer & stiffer; leaf connections are shorter & highly elastic
+        const targetDist = isBackboneLink ? 160 : 65;
+        const stiffness = isBackboneLink ? 0.05 : 0.015;
         const force = Math.max(-3, Math.min(3, (dist - targetDist) * stiffness));
         
         const lfx = (dx / dist) * force;
@@ -302,6 +370,19 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
 
       // Apply velocities with NaN guard and position clamping
       pNodes.forEach(n => {
+        if (n.type === 'internet' || n.id === 'switch-main') {
+          n.vx = 0;
+          n.vy = 0;
+          if (n.type === 'internet') {
+            n.x = 400;
+            n.y = 60;
+          } else if (n.id === 'switch-main') {
+            n.x = 400;
+            n.y = 250;
+          }
+          return;
+        }
+
         if (!n.isDragging) {
           // NaN guard — reset if corrupted
           if (!isFinite(n.vx)) n.vx = 0;
@@ -320,57 +401,72 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
 
       // --- Render ---
       ctx.save();
-      ctx.clearRect(0, 0, width, height);
-      
-      // Apply zoom & pan
-      ctx.translate(v.panX, v.panY);
-      ctx.scale(v.zoom, v.zoom);
+      try {
+        ctx.clearRect(0, 0, width, height);
+        
+        // Apply zoom & pan
+        ctx.translate(v.panX, v.panY);
+        ctx.scale(v.zoom, v.zoom);
 
-      // Draw links
-      links.forEach(link => {
-        const from = physicsNodesRef.current.get(link.from);
-        const to = physicsNodesRef.current.get(link.to);
-        if (!from || !to) return;
+        // Draw links
+        links.forEach(link => {
+          const from = physicsNodesRef.current.get(link.from);
+          const to = physicsNodesRef.current.get(link.to);
+          if (!from || !to) return;
 
-        const fromS = getStatus(from.ip);
-        const toS = getStatus(to.ip);
-        const isOtherLink = from.type === 'other' || to.type === 'other';
-        const linkColor = (fromS === 'offline' || toS === 'offline')
-          ? 'rgba(239, 68, 68, 0.2)'
-          : isOtherLink ? 'rgba(51, 65, 85, 0.4)' : '#334155';
+          const fromS = getStatus(from.ip, from.id);
+          const toS = getStatus(to.ip, to.id);
+          const isOtherLink = from.type === 'other' || to.type === 'other' || 
+                              (to.type && ['iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(to.type));
 
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
-        ctx.strokeStyle = linkColor;
-        ctx.lineWidth = isOtherLink ? 0.8 : 1.5;
-        ctx.stroke();
+          let linkColor = 'rgba(51, 65, 85, 0.4)';
+          if (fromS === 'offline' || toS === 'offline') {
+            linkColor = 'rgba(239, 68, 68, 0.15)';
+          } else if (from.id && from.id.startsWith('hub-')) {
+            const hubColor = getCategoryColor(from.type, from.id);
+            linkColor = `${hubColor}25`;
+          } else if (to.id && to.id.startsWith('hub-')) {
+            const hubColor = getCategoryColor(to.type, to.id);
+            linkColor = `${hubColor}25`;
+          } else if (from.id === 'internet' || from.id === 'switch-main') {
+            linkColor = 'rgba(59, 130, 246, 0.5)';
+          }
 
-        if (link.label && v.zoom > 0.5) {
-          const mx = (from.x + to.x) / 2;
-          const my = (from.y + to.y) / 2;
-          ctx.font = '9px Inter, sans-serif';
-          ctx.fillStyle = '#64748b';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(link.label, mx, my - 8);
-        }
-      });
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(to.x, to.y);
+          ctx.strokeStyle = linkColor;
+          ctx.lineWidth = isOtherLink ? 0.8 : 1.5;
+          ctx.stroke();
 
-      // Draw nodes (other/unknown first, known on top)
-      const sorted = [...pNodes].sort((a, b) => {
-        if (a.type === 'other' && b.type !== 'other') return -1;
-        if (a.type !== 'other' && b.type === 'other') return 1;
-        return 0;
-      });
+          if (link.label && v.zoom > 0.5) {
+            const mx = (from.x + to.x) / 2;
+            const my = (from.y + to.y) / 2;
+            ctx.font = '9px Inter, sans-serif';
+            ctx.fillStyle = '#64748b';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(link.label, mx, my - 8);
+          }
+        });
 
-      sorted.forEach(node => {
-        const status = getStatus(node.ip);
-        const isHovered = hoveredNodeRef.current === node.id || dragNodeRef.current === node.id;
-        drawNode(ctx, node, status, isHovered, v.zoom);
-      });
+        // Draw nodes (other/unknown first, known on top)
+        const sorted = [...pNodes].sort((a, b) => {
+          const isLeafA = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(a.type || 'other') && !(a.id && a.id.startsWith('hub-'));
+          const isLeafB = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(b.type || 'other') && !(b.id && b.id.startsWith('hub-'));
+          if (isLeafA && !isLeafB) return -1;
+          if (!isLeafA && isLeafB) return 1;
+          return 0;
+        });
 
-      ctx.restore();
+        sorted.forEach(node => {
+          const status = getStatus(node.ip, node.id);
+          const isHovered = hoveredNodeRef.current === node.id || dragNodeRef.current === node.id;
+          drawNode(ctx, node, status, isHovered, v.zoom);
+        });
+      } finally {
+        ctx.restore();
+      }
 
       // HUD overlay (not affected by zoom)
       ctx.font = '11px Inter, sans-serif';
@@ -412,7 +508,8 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
     let found: string | null = null;
     
     physicsNodesRef.current.forEach((node, id) => {
-      const hitR = node.type === 'other' ? 10 : 22;
+      const isLeafDot = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(node.type) && !node.id.startsWith('hub-');
+      const hitR = isLeafDot ? 10 : 22;
       if (Math.sqrt((x - node.x) ** 2 + (y - node.y) ** 2) < hitR) {
         found = id;
       }
@@ -457,7 +554,8 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
     // Handle hover
     const { x, y } = screenToWorld(sx, sy);
     const found = Array.from(physicsNodesRef.current.values()).find(node => {
-      const hitR = node.type === 'other' ? 10 : 22;
+      const isLeafDot = ['other', 'iot', 'phone', 'voip-phone', 'camera', 'printer', 'workstation', 'access-point', 'ups'].includes(node.type) && !node.id.startsWith('hub-');
+      const hitR = isLeafDot ? 10 : 22;
       return Math.sqrt((x - node.x) ** 2 + (y - node.y) ** 2) < hitR;
     }) || null;
 
@@ -564,9 +662,29 @@ export default function TopologyMap({ nodes, links, statuses, deviceInfo = {} }:
           onTouchEnd={handlePointerUp}
         />
         {tooltip && (() => {
-          const status = getStatus(tooltip.node.ip);
+          const isHub = tooltip.node.id.startsWith('hub-');
+          const status = getStatus(tooltip.node.ip, tooltip.node.id);
           const info = deviceInfo[tooltip.node.ip];
-          const isInfra = tooltip.node.ip === '0.0.0.0';
+          const isInfra = tooltip.node.ip === '0.0.0.0' || tooltip.node.ip.startsWith('0.0.0.');
+          
+          if (isHub) {
+            const deviceCount = links.filter(l => l.from === tooltip.node.id).length;
+            return (
+              <div
+                className="topo-tooltip"
+                style={{ left: tooltip.x + 12, top: tooltip.y - 10, minWidth: '200px' }}
+              >
+                <strong>{tooltip.node.label}</strong>
+                <span style={{ fontSize: '11px', color: '#3b82f6', fontWeight: 500 }}>
+                  📂 Concentrador Virtual
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                  Dispositivos conectados: <strong>{deviceCount}</strong>
+                </span>
+              </div>
+            );
+          }
+
           return (
             <div
               className="topo-tooltip"
